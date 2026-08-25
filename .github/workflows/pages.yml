@@ -1,0 +1,88 @@
+name: Deploy NESSY to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build WASM
+        run: cargo build --release --target wasm32-unknown-unknown -p nessy-web
+
+      - name: Generate web files
+        run: |
+          mkdir -p dist
+          wasm-bindgen \
+            target/wasm32-unknown-unknown/release/nessy_web.wasm \
+            --out-dir dist \
+            --target web
+
+      - name: Copy web assets
+        run: |
+          cp -r resources dist/resources 2>/dev/null || true
+          cp -r web/ui dist/ui 2>/dev/null || true
+
+      - name: Create index.html
+        run: |
+          cat > dist/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>NESSY</title>
+          </head>
+          <body>
+            <script type="module">
+              import init from "./nessy_web.js";
+
+              init();
+            </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
