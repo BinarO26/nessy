@@ -1,8 +1,9 @@
-name: Deploy NESSY to GitHub Pages
+name: Build and Deploy
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -10,12 +11,8 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,13 +24,13 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Install wasm-bindgen-cli
+      - name: Install wasm-bindgen
         run: cargo install wasm-bindgen-cli
 
-      - name: Build WASM
-        run: cargo build --release --target wasm32-unknown-unknown -p nessy-web
+      - name: Build NESSY Web
+        run: cargo build --release --target wasm32-unknown-unknown --manifest-path web/Cargo.toml
 
-      - name: Generate web files
+      - name: Generate WASM bindings
         run: |
           mkdir -p dist
           wasm-bindgen \
@@ -41,12 +38,7 @@ jobs:
             --out-dir dist \
             --target web
 
-      - name: Copy web assets
-        run: |
-          cp -r resources dist/resources 2>/dev/null || true
-          cp -r web/ui dist/ui 2>/dev/null || true
-
-      - name: Create index.html
+      - name: Create HTML
         run: |
           cat > dist/index.html <<'EOF'
           <!DOCTYPE html>
@@ -69,20 +61,11 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
